@@ -9,7 +9,7 @@
 
   /* ---------- state ---------- */
   function blankState() {
-    return { v: 1, player: "Camdyn", created: dayKey(new Date()), days: {}, xp: 0, totalReps: 0, rightReps: 0,
+    return { v: 1, player: "Player", created: dayKey(new Date()), days: {}, xp: 0, totalReps: 0, rightReps: 0,
       pbs: {}, badges: {}, pin: null, lastBackup: null, seenInstallTip: false };
   }
   function load() {
