@@ -10,7 +10,8 @@
   /* ---------- state ---------- */
   function blankState() {
     return { v: 1, player: "Player", created: dayKey(new Date()), days: {}, xp: 0, totalReps: 0, rightReps: 0,
-      pbs: {}, badges: {}, pin: null, lastBackup: null, seenInstallTip: false };
+      pbs: {}, badges: {}, pin: null, lastBackup: null, seenInstallTip: false,
+      pk: { name: "Card pack", per: 5, levelBonus: true, progress: 0, earned: 0, given: 0 } };
   }
   function load() {
     try {
@@ -18,6 +19,10 @@
       if (!raw) return blankState();
       var s = JSON.parse(raw);
       var b = blankState();
+      if (!s.pk) { // first run with packs: count quests already completed toward the first pack
+        var done = Object.keys(s.days || {}).filter(function (k) { return s.days[k].reps >= D.dailyGoal; }).length;
+        s.pk = b.pk; s.pk.progress = Math.min(done, s.pk.per - 1);
+      }
       for (var k in b) if (!(k in s)) s[k] = b[k];
       return s;
     } catch (e) { return blankState(); }
@@ -100,10 +105,15 @@
     if (!wasComplete && day.reps >= D.dailyGoal) {
       day.complete = true; day.xp += 100; S.xp += 100;
       msg = "QUEST COMPLETE! +100 bonus XP";
+      day.pk = true; S.pk.progress++;
+      if (S.pk.progress >= S.pk.per) { S.pk.progress = 0; S.pk.earned++; packEarned("for " + S.pk.per + " quests"); }
       setTimeout(function () { playSnd("horn"); }, run ? 700 : 0);
     } else if (!run) { playSnd("set"); }
     var newLevel = levelIndex(S.xp);
-    if (newLevel > oldLevel) msg = "LEVEL UP: " + D.levels[newLevel].name + "!";
+    if (newLevel > oldLevel) {
+      msg = "LEVEL UP: " + D.levels[newLevel].name + "!";
+      if (S.pk.levelBonus) { S.pk.earned++; packEarned("for reaching " + D.levels[newLevel].name); }
+    }
     checkBadges();
     save(); toast(msg); render();
   }
@@ -112,7 +122,14 @@
     day.sets[d.id]--; day.reps -= d.setSize;
     var gain = xpFor(d); day.xp -= gain; S.xp = Math.max(0, S.xp - gain);
     S.totalReps -= d.setSize; S.rightReps -= rightFor(d);
-    if (day.complete && day.reps < D.dailyGoal) { day.complete = false; day.xp -= 100; S.xp = Math.max(0, S.xp - 100); }
+    if (day.complete && day.reps < D.dailyGoal) {
+      day.complete = false; day.xp -= 100; S.xp = Math.max(0, S.xp - 100);
+      if (day.pk) {
+        day.pk = false;
+        if (S.pk.progress > 0) S.pk.progress--;
+        else if (S.pk.earned > S.pk.given) { S.pk.earned--; S.pk.progress = S.pk.per - 1; }
+      }
+    }
     save(); render();
   }
 
@@ -258,6 +275,29 @@
     clipOp("readwrite", function (st) { return st.delete(id); }).then(function () { showCoachClip(id); });
   }
 
+  /* ---------- card pack rewards ---------- */
+  function packCard() {
+    var pk = S.pk, waiting = pk.earned - pk.given, pips = "";
+    for (var i = 0; i < pk.per; i++) pips += '<i class="' + (i < pk.progress ? "on" : "") + '"></i>';
+    var need = pk.per - pk.progress;
+    return '<div class="packcard' + (waiting ? " ready" : "") + '"><div class="packart" aria-hidden="true"><span>★</span></div><div class="packtxt">' +
+      (waiting ? "<b>" + waiting + " " + esc(pk.name) + (waiting > 1 ? "s" : "") + " ready!</b><span>Show Dad to claim " + (waiting > 1 ? "them" : "it") + ".</span>"
+               : "<b>Next " + esc(pk.name) + "</b><span>" + need + " more completed quest" + (need === 1 ? "" : "s") + (pk.levelBonus ? " · bonus pack every level-up" : "") + "</span>") +
+      '<div class="pips">' + pips + "</div></div></div>";
+  }
+  function packEarned(why) {
+    setTimeout(function () {
+      var o = document.createElement("div"); o.id = "packOverlay"; o.className = "packoverlay"; o.setAttribute("role", "dialog");
+      o.innerHTML = '<div class="packbig" aria-hidden="true"><span>★</span></div><h1>PACK EARNED!</h1>' +
+        '<p>You earned a <b>' + esc(S.pk.name) + "</b> " + esc(why) + ".</p><p class=\"muted\">Show Dad to claim it.</p>" +
+        '<button class="btn" data-action="closePack">Let\'s go!</button>';
+      o.addEventListener("click", function (e) { if (e.target.closest("[data-action=closePack]")) o.remove(); });
+      document.body.appendChild(o);
+      playSnd("horn"); setTimeout(function () { playSnd("whistle"); }, 600);
+      say("You earned a pack! Show Dad to claim it.");
+    }, 900);
+  }
+
   /* ---------- views ---------- */
   function viewHome() {
     var key = today(), day = getDay(key), li = levelIndex(S.xp), lvl = D.levels[li], next = D.levels[li + 1];
@@ -272,6 +312,7 @@
       '<div class="stat"><b>' + (day.complete ? "✓ Done" : left) + '</b><span>' + (day.complete ? "Extra reps still earn XP" : "reps to go · about " + questMinutes(day, D.drills) + " min") + '</span></div>' +
       '<div class="stat"><b>' + fmt(S.xp) + '</b><span>XP' + (next ? " · " + fmt(next.xp - S.xp) + " to " + esc(next.name) : " · max level") + '</span></div>' +
       '</div></div><div class="bar" style="margin-top:14px"><i style="width:' + pct + '%"></i></div></div>';
+    h += packCard();
 
     if (isIOS() && !isStandalone() && !S.seenInstallTip) {
       h += '<div class="tip"><b>Protect your progress:</b> tap Share, then <b>Add to Home Screen</b>. It opens like an app and keeps your saves safe. <a href="#" data-action="hidetip">Got it</a></div>';
@@ -404,10 +445,22 @@
     });
     h += "</div>";
 
+    var waiting = S.pk.earned - S.pk.given;
     h += '<h2>Coach (Dad) zone</h2><div class="card">';
-    h += '<p style="margin-top:0">Watch one clip of today\'s work, then award a <b>Coach\'s Pick</b> (+250 XP).</p>';
-    h += '<div class="field"><label for="pin">' + (S.pin ? "Coach PIN" : "Set a 4-digit coach PIN") + '</label><input id="pin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"><div class="err" id="pinerr"></div></div>';
-    h += '<button class="btn alt" data-action="coach">' + (S.pin ? "Award Coach's Pick" : "Save PIN") + "</button></div>";
+    h += '<div class="field" style="margin-top:0"><label for="pin">' + (S.pin ? "Coach PIN (needed for everything below)" : "Set a 4-digit coach PIN first") + '</label><input id="pin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"><div class="err" id="pinerr"></div></div>';
+    if (!S.pin) { h += '<button class="btn alt" data-action="coach">Save PIN</button></div>'; }
+    else {
+      h += '<button class="btn" data-action="givePack"' + (waiting ? "" : " disabled") + '>🎴 Hand over a ' + esc(S.pk.name) + (waiting ? " (" + waiting + " waiting)" : " (none waiting)") + "</button>";
+      h += '<button class="btn alt" style="margin-top:10px" data-action="coach">Award Coach\'s Pick (+250 XP)</button>';
+      h += '<p class="small muted">Coach\'s Pick: watch one clip of today\'s work first.</p>';
+      h += '<h3 style="margin-top:14px">Pack rewards</h3>' +
+        '<div class="field"><label for="pkname">Reward name (only saved on this phone)</label><input id="pkname" value="' + esc(S.pk.name) + '" maxlength="30"></div>' +
+        '<div class="field"><label for="pkper">Completed quests per pack</label><input id="pkper" type="number" inputmode="numeric" min="2" max="14" value="' + S.pk.per + '"></div>' +
+        '<label class="row small" style="margin:6px 0 12px"><input type="checkbox" id="pkbonus"' + (S.pk.levelBonus ? " checked" : "") + '> Bonus pack at every level-up</label>' +
+        '<button class="btn alt sm" data-action="savePack">Save pack settings</button>' +
+        '<p class="small muted">Given so far: ' + S.pk.given + ' · earned: ' + S.pk.earned + "</p>";
+      h += "</div>";
+    }
 
     h += '<h2>Backup</h2><div class="card"><p style="margin-top:0" class="small">Progress saves on this phone automatically after every set. Back up weekly in case the phone is reset or replaced.' +
       (S.lastBackup ? " Last backup: " + S.lastBackup + "." : " <b>No backup yet.</b>") + '</p>' +
@@ -465,6 +518,9 @@
     else if (a === "runSkip") { if (run) { horn(); say("Go!"); startPhase("work", findDrill(run.id).secs); } }
     else if (a === "runStop") { stopRun(); try { speechSynthesis.cancel(); } catch (e) {} render(); }
     else if (a === "testSound") testSound();
+    else if (a === "givePack") givePack();
+    else if (a === "savePack") savePack();
+    else if (a === "closePack") { var o = document.getElementById("packOverlay"); if (o) o.remove(); }
     else if (a === "voice") { S.voice = S.voice === false; save(); toast(S.voice ? "Voice coach on" : "Voice coach off"); if (S.voice) say("Voice coach on."); render(); }
     else if (a === "undo") undoSet(findDrill(id));
     else if (a === "play" || a === "swapvid") { if (isIOS()) openYouTubeApp(el.dataset.vid); else playVideo(el.dataset.vid); }
@@ -509,7 +565,7 @@
     var link = app.querySelector(".ytapp"); if (link) link.href = "https://www.youtube.com/watch?v=" + encodeURIComponent(id);
   }
 
-  var APP_VERSION = "8";
+  var APP_VERSION = "9";
   function testSound() {
     unlockAudio();
     countBeep(); setTimeout(countBeep, 500); setTimeout(horn, 1000);
@@ -672,11 +728,34 @@
   }
 
   /* ---------- coach + backup ---------- */
+  function pinOK() {
+    var input = document.getElementById("pin"), err = document.getElementById("pinerr"), v = (input.value || "").trim();
+    if (!/^\d{4}$/.test(v)) { err.textContent = "Enter the 4-digit coach PIN."; input.focus(); return false; }
+    if (v !== S.pin) { err.textContent = "Wrong PIN."; return false; }
+    return true;
+  }
+  function givePack() {
+    if (!pinOK()) return;
+    if (S.pk.earned <= S.pk.given) { toast("No packs waiting"); return; }
+    S.pk.given++; save(); playSnd("horn"); say("Enjoy your pack!");
+    toast(S.pk.name + " handed over! Enjoy it."); render();
+  }
+  function savePack() {
+    if (!pinOK()) return;
+    var name = (document.getElementById("pkname").value || "").trim() || "Card pack";
+    var per = parseInt(document.getElementById("pkper").value, 10);
+    if (isNaN(per) || per < 2 || per > 14) { document.getElementById("pinerr").textContent = "Quests per pack must be 2 to 14."; return; }
+    S.pk.name = name; S.pk.per = per; S.pk.levelBonus = document.getElementById("pkbonus").checked;
+    if (S.pk.progress >= per) { S.pk.progress = 0; S.pk.earned++; packEarned("for " + per + " quests"); }
+    save(); toast("Pack settings saved"); render();
+  }
   function coach() {
     var input = document.getElementById("pin"), err = document.getElementById("pinerr"), v = (input.value || "").trim();
-    if (!/^\d{4}$/.test(v)) { err.textContent = "PIN must be 4 digits."; return; }
-    if (!S.pin) { S.pin = v; save(); toast("Coach PIN saved"); render(); return; }
-    if (v !== S.pin) { err.textContent = "Wrong PIN."; return; }
+    if (!S.pin) {
+      if (!/^\d{4}$/.test(v)) { err.textContent = "PIN must be 4 digits."; return; }
+      S.pin = v; save(); toast("Coach PIN saved"); render(); return;
+    }
+    if (!pinOK()) return;
     S.xp += 250; S.badges.dad = today(); S.coachPicks = (S.coachPicks || 0) + 1; save();
     toast("Coach's Pick! +250 XP"); render();
   }

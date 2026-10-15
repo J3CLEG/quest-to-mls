@@ -17,6 +17,7 @@ A daily soccer training app for a U11 player. The goal: **500 reps a day**, made
 - **Mbappé moves:** unlock from Academy level up. One unlocked move shows up each day as a bonus drill.
 - **Streaks:** one rest day per week (Mon–Sun) doesn't break the streak.
 - **Records:** timed challenges (toe taps in 30 sec, wall passes in 60 sec, juggling record).
+- **Card pack rewards:** every 5 completed quests fills a pack meter and earns a real pack, plus a bonus pack at each level-up. A celebration screen tells him to show Dad. Dad hands it over in the Me tab with the coach PIN, which keeps an honest count. Reward name, quests per pack and the level-up bonus are set on the phone (PIN required).
 - **Coach zone:** Dad sets a 4-digit PIN and awards a "Coach's Pick" (+250 XP) after reviewing a clip.
 - **Backup:** Me tab → Download backup. Restore on any phone.
 
