@@ -10,7 +10,8 @@ A daily soccer training app for a U11 player. The goal: **500 reps a day**, made
 3. Open it from the home-screen icon. It runs full-screen, works offline (except videos), and keeps progress safer than a browser tab.
 
 ## How it works
-- **Daily quest:** 13 drills. He taps "Set done" after each set of 10 or 20 reps. Progress saves after every tap.
+- **Daily quest:** 13 drills, about 23 minutes. Progress saves after every set.
+- **Follow-along timer:** "Start set" runs 3-2-1, a work countdown sized to each drill (15–45 sec), then a 10-second rest before the next set starts on its own. Beeps on the last 3 seconds, keeps the screen awake, and has Pause, Done early, Skip rest and Stop. Each drill's `secs` and the global `restSecs` live in `drills.js`.
 - **Videos:** every drill has an embedded YouTube demo that plays inside the app, plus a backup video on harder moves.
 - **XP and levels:** Rec League → Club → Academy → MLS NEXT → Homegrown → MLS Debut → All-Star → Mbappé Mode. Right-foot drills earn 1.5× XP. Finishing 500 reps earns +100 XP.
 - **Mbappé moves:** unlock from Academy level up. One unlocked move shows up each day as a bonus drill.

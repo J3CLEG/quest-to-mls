@@ -91,6 +91,21 @@ h3{font-size:19px}
 .tab{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:72px;min-height:52px;justify-content:center;font-size:12px;font-weight:700;color:var(--muted);border-radius:12px}
 .tab .ti{font-size:20px;line-height:1}
 .tab.is-on{color:var(--gold)}
+.runner{margin-top:14px;border-radius:24px;padding:18px 16px;text-align:center;border:1px solid var(--line);background:var(--card)}
+.runner.work{background:linear-gradient(170deg,#1d3a9c,#141f3d 70%)}
+.runner.rest{background:linear-gradient(170deg,#0f4a33,#141f3d 70%)}
+.runner .runlabel{font-family:var(--display);font-size:40px;line-height:1.1;letter-spacing:.03em}
+.runner.work .runlabel{color:var(--gold)}
+.runner.rest .runlabel{color:var(--green)}
+.bigring{width:min(70vw,260px);height:auto;display:block;margin:12px auto}
+.bigring circle{fill:none;stroke-width:14}
+.bigring .bg{stroke:rgba(255,255,255,.12)}
+.bigring .fg{stroke:var(--gold);stroke-linecap:round;transform:rotate(-90deg);transform-origin:50% 50%;transition:stroke-dashoffset .2s linear}
+.runner.rest .bigring .fg{stroke:var(--green)}
+.runner.pre .bigring .fg{stroke:var(--sky)}
+.bigring text{fill:var(--text);font-family:var(--display);text-anchor:middle}
+.runbtns{display:flex;gap:10px;justify-content:center}
+.runbtns .btn{flex:1;max-width:180px}
 .toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 84px);transform:translateX(-50%) translateY(20px);background:var(--gold);color:#1a1300;font-weight:800;padding:12px 18px;border-radius:14px;opacity:0;pointer-events:none;transition:.25s;z-index:20;max-width:90vw;text-align:center}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .tip{background:rgba(95,208,255,.1);border:1px solid rgba(95,208,255,.3);border-radius:14px;padding:12px;font-size:14px;margin-top:14px}

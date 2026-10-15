@@ -185,7 +185,7 @@
     h += '<div class="hero"><div class="lvl">Level ' + (li + 1) + ' · ' + esc(lvl.name) + '</div>' +
       '<h1>' + (day.complete ? "Quest complete!" : "Today's quest: " + D.dailyGoal) + '</h1>' +
       '<div class="ringwrap">' + ring(day.reps) + '<div class="stats">' +
-      '<div class="stat"><b>' + (day.complete ? "✓ Done" : left) + '</b><span>' + (day.complete ? "Extra reps still earn XP" : "reps to go") + '</span></div>' +
+      '<div class="stat"><b>' + (day.complete ? "✓ Done" : left) + '</b><span>' + (day.complete ? "Extra reps still earn XP" : "reps to go · about " + questMinutes(day, D.drills) + " min") + '</span></div>' +
       '<div class="stat"><b>' + fmt(S.xp) + '</b><span>XP' + (next ? " · " + fmt(next.xp - S.xp) + " to " + esc(next.name) : " · max level") + '</span></div>' +
       '</div></div><div class="bar" style="margin-top:14px"><i style="width:' + pct + '%"></i></div></div>';
 
@@ -210,24 +210,48 @@
     return h;
   }
 
+  function setLabel(d, i) { return d.sides ? d.sides[i % d.sides.length] : "Set " + (i + 1); }
+
+  function runnerPanel(d, done, tot) {
+    var left = run.paused ? Math.ceil(run.remain / 1000) : Math.max(0, Math.ceil((run.end - Date.now()) / 1000));
+    var label, sub, cls = run.phase;
+    if (run.phase === "pre") { label = "Get ready"; sub = setLabel(d, done) + " · " + d.setSize + " reps"; }
+    else if (run.phase === "work") { label = "GO!"; sub = setLabel(d, done) + " of " + tot + " · " + d.setSize + " reps"; }
+    else { label = "Rest"; sub = "Next: " + setLabel(d, done) + " · get the ball ready"; }
+    var h = '<div class="runner ' + cls + '"><div class="runlabel">' + esc(label) + '</div><div class="small">' + esc(sub) + "</div>" +
+      bigRing(left, run.total) + '<div class="runbtns">' +
+      '<button class="btn sm alt" data-action="runPause">' + (run.paused ? "▶ Resume" : "❚❚ Pause") + "</button>";
+    if (run.phase === "work") h += '<button class="btn sm" data-action="runDone" data-id="' + d.id + '">✓ Done early</button>';
+    else h += '<button class="btn sm" data-action="runSkip">Skip ›</button>';
+    h += '</div><p style="margin:10px 0 0"><a href="#" data-action="runStop">Stop timer</a></p></div>';
+    h += '<div class="card" style="margin-top:12px"><ul class="cues" style="margin:0">' + d.cues.map(function (c) { return "<li>" + esc(c) + "</li>"; }).join("") + "</ul></div>";
+    return h;
+  }
+  function bigRing(left, total) {
+    var r = 88, c = 2 * Math.PI * r, p = total ? Math.max(0, Math.min(1, left / total)) : 0;
+    return '<svg class="bigring" viewBox="0 0 200 200" aria-hidden="true"><circle class="bg" cx="100" cy="100" r="' + r + '"/>' +
+      '<circle class="fg" id="runArc" cx="100" cy="100" r="' + r + '" stroke-dasharray="' + c.toFixed(1) + '" stroke-dashoffset="' + (c * (1 - p)).toFixed(1) + '"/>' +
+      '<text id="runNum" x="100" y="122" font-size="72">' + left + "</text></svg>";
+  }
+
   function viewDrill(d) {
     var day = getDay(today()), done = setsDone(day, d), tot = setsTotal(d);
     var h = '<button class="back" data-action="home">‹ Back to quest</button>';
     h += '<div class="row between"><h1>' + esc(d.name) + '</h1></div>';
-    h += '<p class="muted" style="margin:6px 0 0">' + d.reps + ' reps · ' + tot + ' sets of ' + d.setSize + (d.foot === "right" ? ' · <span class="tag right">Right foot</span>' : d.foot === "left" ? ' · <span class="tag">Left foot</span>' : "") + '</p>';
+    h += '<p class="muted" style="margin:6px 0 0">' + d.reps + ' reps · ' + tot + ' sets of ' + d.setSize + ' · ' + d.secs + ' sec each' + (d.foot === "right" ? ' · <span class="tag right">Right foot</span>' : d.foot === "left" ? ' · <span class="tag">Left foot</span>' : "") + '</p>';
+    if (run && run.id === d.id && done < tot) return h + runnerPanel(d, done, tot);
     h += videoBlock(d.video, d.altVideo);
     h += '<div class="card" style="margin-top:14px"><h3>How</h3><p style="margin:6px 0 0">' + esc(d.how) + '</p>' +
       '<h3 style="margin-top:12px">Coach says</h3><ul class="cues">' + d.cues.map(function (c) { return "<li>" + esc(c) + "</li>"; }).join("") + "</ul>" +
       (d.builds ? '<div class="builds">⚡ ' + esc(d.builds) + "</div>" : "") + "</div>";
     h += '<div class="sets">';
     for (var i = 0; i < tot; i++) {
-      var label = d.sides ? d.sides[i % d.sides.length] : "Set " + (i + 1);
-      h += '<div class="set' + (i < done ? " on" : "") + '"><b>' + (i < done ? "✓" : d.setSize) + "</b>" + esc(label) + "</div>";
+      h += '<div class="set' + (i < done ? " on" : "") + '"><b>' + (i < done ? "✓" : d.setSize) + "</b>" + esc(setLabel(d, i)) + "</div>";
     }
     h += "</div>";
     if (done < tot) {
-      var nextLabel = d.sides ? d.sides[done % d.sides.length] : "Set " + (done + 1);
-      h += '<button class="btn" data-action="set" data-id="' + d.id + '">✓ ' + esc(nextLabel) + ' done: +' + d.setSize + "</button>";
+      h += '<button class="btn" data-action="runStart" data-id="' + d.id + '">▶ Start ' + esc(setLabel(d, done)) + ' · ' + d.secs + ' sec timer</button>';
+      h += '<p style="text-align:center;margin:12px 0 0"><a href="#" data-action="set" data-id="' + d.id + '">Log set without the timer (+' + d.setSize + ")</a></p>";
     } else {
       h += '<button class="btn blue" data-action="home">Drill complete! Next drill ›</button>';
     }
@@ -332,7 +356,7 @@
     app.innerHTML = h;
     document.querySelectorAll(".tab").forEach(function (b) { b.classList.toggle("is-on", b.dataset.tab === view.tab); });
   }
-  function go(tab) { stopTimer(); view = { tab: tab, drill: null, challenge: null }; render(); window.scrollTo(0, 0); }
+  function go(tab) { stopRun(); stopTimer(); view = { tab: tab, drill: null, challenge: null }; render(); window.scrollTo(0, 0); }
 
   document.querySelector(".tabbar").addEventListener("click", function (e) {
     var b = e.target.closest(".tab"); if (b) go(b.dataset.tab);
@@ -345,7 +369,12 @@
     if (a === "open") { view.drill = id; render(); window.scrollTo(0, 0); }
     else if (a === "home") go("home");
     else if (a === "records") go("records");
-    else if (a === "set") logSet(findDrill(id));
+    else if (a === "set") { stopRun(); logSet(findDrill(id)); }
+    else if (a === "runStart") runStart(findDrill(id));
+    else if (a === "runPause") runPause();
+    else if (a === "runDone") { if (run) finishSet(findDrill(run.id)); }
+    else if (a === "runSkip") { if (run) { beep(990, 0.3); startPhase("work", findDrill(run.id).secs); } }
+    else if (a === "runStop") { stopRun(); render(); }
     else if (a === "undo") undoSet(findDrill(id));
     else if (a === "play" || a === "swapvid") playVideo(el.dataset.vid);
     else if (a === "hidetip") { S.seenInstallTip = true; save(); render(); }
@@ -370,6 +399,62 @@
     box.innerHTML = '<iframe src="https://www.youtube-nocookie.com/embed/' + encodeURIComponent(id) +
       '?autoplay=1&playsinline=1&rel=0&modestbranding=1" title="Drill video" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>';
     var link = app.querySelector(".vidlinks a"); if (link) link.href = "https://www.youtube.com/watch?v=" + encodeURIComponent(id);
+  }
+
+  /* ---------- follow-along set timer ---------- */
+  var run = null, runTick = null;
+  function unlockAudio() {
+    try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === "suspended") actx.resume(); } catch (e) {}
+  }
+  function keepAwake() {
+    try { if (navigator.wakeLock && !wakeLock) navigator.wakeLock.request("screen").then(function (w) { wakeLock = w; w.addEventListener("release", function () { wakeLock = null; }); }).catch(function () {}); } catch (e) {}
+  }
+  function stopRun() {
+    run = null; if (runTick) { clearInterval(runTick); runTick = null; }
+    if (wakeLock && !timer) { try { wakeLock.release(); } catch (e) {} wakeLock = null; }
+  }
+  function startPhase(phase, secs) {
+    run.phase = phase; run.total = secs; run.end = Date.now() + secs * 1000; run.paused = false; run.lastBeep = null;
+    if (!runTick) runTick = setInterval(runStep, 200);
+    render();
+  }
+  function runStart(d) {
+    unlockAudio(); stopRun(); keepAwake();
+    run = { id: d.id };
+    startPhase("pre", 3); beep(520, 0.12); run.lastBeep = 3;
+    window.scrollTo(0, 0);
+  }
+  function runStep() {
+    if (!run || run.paused) return;
+    var left = Math.ceil((run.end - Date.now()) / 1000);
+    var num = document.getElementById("runNum"), arc = document.getElementById("runArc");
+    if (num) num.textContent = Math.max(0, left);
+    if (arc) { var c = 2 * Math.PI * 88; arc.setAttribute("stroke-dashoffset", (c * (1 - Math.max(0, left) / run.total)).toFixed(1)); }
+    if (left > 0 && left <= 3 && run.lastBeep !== left) { run.lastBeep = left; beep(run.phase === "work" ? 700 : 520, 0.1); }
+    if (left <= 0) phaseDone();
+  }
+  function phaseDone() {
+    var d = findDrill(run.id);
+    if (run.phase !== "work") { beep(990, 0.3); startPhase("work", d.secs); return; }
+    finishSet(d);
+  }
+  function finishSet(d) {
+    beep(440, 0.45);
+    logSet(d);
+    if (!run) return;
+    if (drillComplete(getDay(today()), d)) { stopRun(); render(); return; }
+    startPhase("rest", D.restSecs);
+  }
+  function runPause() {
+    if (!run) return;
+    if (run.paused) { run.end = Date.now() + run.remain; run.paused = false; keepAwake(); }
+    else { run.remain = Math.max(0, run.end - Date.now()); run.paused = true; }
+    render();
+  }
+  function questMinutes(day, quest) {
+    var s = 0;
+    quest.forEach(function (d) { var left = setsTotal(d) - setsDone(day, d); if (left > 0) s += left * d.secs + (left - 1) * D.restSecs; });
+    return Math.ceil(s / 60);
   }
 
   /* ---------- timed challenges ---------- */
@@ -446,7 +531,11 @@
   if ("serviceWorker" in navigator && location.protocol === "https:") {
     window.addEventListener("load", function () { navigator.serviceWorker.register("sw.js").catch(function () {}); });
   }
-  document.addEventListener("visibilitychange", function () { if (!document.hidden && !view.drill && !view.challenge) render(); });
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) return;
+    if (run) { keepAwake(); unlockAudio(); return; }
+    if (!view.drill && !view.challenge) render();
+  });
   checkBadges(); save(); render();
 
   window.__quest = { state: function () { return S; }, logSet: function (id) { logSet(findDrill(id)); }, streak: streak }; // used by tests

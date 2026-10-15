@@ -1,5 +1,5 @@
 /* Offline cache for the app shell. Videos still need internet. Bump VERSION when files change. */
-var VERSION = "qtm-v2";
+var VERSION = "qtm-v3";
 var SHELL = ["./", "index.html", "styles.css", "app.js", "drills.js", "manifest.webmanifest", "icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 
 self.addEventListener("install", function (e) {
