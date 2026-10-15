@@ -63,6 +63,7 @@ h3{font-size:19px}
 .video .play span{background:var(--red);color:#fff;border-radius:999px;padding:12px 20px;font-weight:800}
 .video iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
 .vidlinks{display:flex;justify-content:space-between;gap:10px;font-size:13px}
+.ytapp{width:100%;margin-top:10px;text-decoration:none}
 .cues{margin:8px 0 0;padding-left:20px}
 .cues li{margin:4px 0}
 .builds{background:rgba(255,59,79,.12);border:1px solid rgba(255,59,79,.3);border-radius:14px;padding:10px 12px;font-size:14px;margin-top:12px}

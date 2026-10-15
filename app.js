@@ -168,8 +168,9 @@
     var h = '<div class="video" data-vid="' + esc(v.id) + '">' +
       '<img src="' + thumb + '" alt="" loading="lazy">' +
       '<button class="play" data-action="play" data-vid="' + esc(v.id) + '" aria-label="Play video: ' + esc(v.title) + '"><span>▶ Watch how</span></button></div>' +
-      '<div class="vidlinks"><span class="muted">' + esc(v.title) + ' · ' + esc(v.channel) + '</span>' +
-      '<a href="https://www.youtube.com/watch?v=' + esc(v.id) + '" target="_blank" rel="noopener">Open in YouTube</a></div>';
+      '<div class="vidlinks"><span class="muted">' + esc(v.title) + ' · ' + esc(v.channel) + '</span></div>' +
+      '<a class="btn alt sm ytapp" href="https://www.youtube.com/watch?v=' + esc(v.id) + '" target="_blank" rel="noopener">▶ Watch in the YouTube app</a>' +
+      '<p class="small muted" style="margin:6px 0 0">If YouTube asks you to sign in, use this button instead.</p>';
     if (alt) h += '<p class="small muted" style="margin:8px 0 0">Still stuck? <a href="#" data-action="swapvid" data-vid="' + esc(alt.id) + '">Try another video</a> (' + esc(alt.channel) + ')</p>';
     return h;
   }
@@ -396,9 +397,11 @@
 
   function playVideo(id) {
     var box = app.querySelector(".video"); if (!box) return;
-    box.innerHTML = '<iframe src="https://www.youtube-nocookie.com/embed/' + encodeURIComponent(id) +
-      '?autoplay=1&playsinline=1&rel=0&modestbranding=1" title="Drill video" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>';
-    var link = app.querySelector(".vidlinks a"); if (link) link.href = "https://www.youtube.com/watch?v=" + encodeURIComponent(id);
+    /* youtube.com (not youtube-nocookie) so YouTube can see the viewer's normal session and skip its "not a bot" check */
+    box.innerHTML = '<iframe src="https://www.youtube.com/embed/' + encodeURIComponent(id) +
+      '?autoplay=1&playsinline=1&rel=0&origin=' + encodeURIComponent(location.origin) +
+      '" title="Drill video" referrerpolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>';
+    var link = app.querySelector(".ytapp"); if (link) link.href = "https://www.youtube.com/watch?v=" + encodeURIComponent(id);
   }
 
   /* ---------- follow-along set timer ---------- */
