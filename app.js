@@ -142,15 +142,21 @@
     clearTimeout(toastT); toastT = setTimeout(function () { el.classList.remove("show"); }, 2200);
   }
   var actx;
-  function beep(f, dur) {
+  function beep(f, dur, vol, type) {
     try {
       actx = actx || new (window.AudioContext || window.webkitAudioContext)();
-      var o = actx.createOscillator(), g = actx.createGain();
-      o.frequency.value = f; o.connect(g); g.connect(actx.destination);
-      g.gain.setValueAtTime(0.2, actx.currentTime); g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + dur);
-      o.start(); o.stop(actx.currentTime + dur);
+      if (actx.state === "suspended") actx.resume();
+      var o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
+      o.type = type || "square"; o.frequency.value = f; o.connect(g); g.connect(actx.destination);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol || 0.35, t + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.start(t); o.stop(t + dur + 0.02);
     } catch (e) {}
   }
+  function tick() { beep(1500, 0.04, 0.18, "square"); }
+  function countBeep() { beep(880, 0.16, 0.4, "square"); }
+  function horn() { beep(1320, 0.5, 0.45, "sawtooth"); setTimeout(function () { beep(990, 0.35, 0.35, "sawtooth"); }, 90); }
+  function whistle() { beep(2100, 0.25, 0.35, "triangle"); setTimeout(function () { beep(2100, 0.45, 0.35, "triangle"); }, 280); }
   function isIOS() { return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1); }
   function isStandalone() { return window.navigator.standalone === true || window.matchMedia("(display-mode: standalone)").matches; }
 
@@ -438,7 +444,7 @@
     else if (a === "runStart") runStart(findDrill(id));
     else if (a === "runPause") runPause();
     else if (a === "runDone") { if (run) finishSet(findDrill(run.id)); }
-    else if (a === "runSkip") { if (run) { beep(990, 0.3); say("Go!"); startPhase("work", findDrill(run.id).secs); } }
+    else if (a === "runSkip") { if (run) { horn(); say("Go!"); startPhase("work", findDrill(run.id).secs); } }
     else if (a === "runStop") { stopRun(); try { speechSynthesis.cancel(); } catch (e) {} render(); }
     else if (a === "voice") { S.voice = S.voice === false; save(); toast(S.voice ? "Voice coach on" : "Voice coach off"); if (S.voice) say("Voice coach on."); render(); }
     else if (a === "undo") undoSet(findDrill(id));
@@ -486,14 +492,32 @@
 
   /* ---------- follow-along set timer ---------- */
   var run = null, runTick = null;
+  /* iPhone mutes web sounds when the side switch is on silent. Two fixes, both run on the tap that starts the timer:
+     1. audioSession "playback" (Safari 16.4+) tells iOS this is media, like a video, so it plays on silent.
+     2. Playing a silent <audio> clip switches older iOS into the same media mode. */
+  var silentEl = null;
+  function silentWav() {
+    var n = 800, b = new ArrayBuffer(44 + n * 2), v = new DataView(b);
+    function s(o, t) { for (var i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i)); }
+    s(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); s(8, "WAVEfmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+    v.setUint16(22, 1, true); v.setUint32(24, 8000, true); v.setUint32(28, 16000, true); v.setUint16(32, 2, true);
+    v.setUint16(34, 16, true); s(36, "data"); v.setUint32(40, n * 2, true);
+    return URL.createObjectURL(new Blob([b], { type: "audio/wav" }));
+  }
   function unlockAudio() {
+    try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch (e) {}
+    try {
+      if (!silentEl) { silentEl = new Audio(silentWav()); silentEl.setAttribute("playsinline", ""); silentEl.loop = true; silentEl.volume = 0.01; }
+      var p = silentEl.play(); if (p && p.catch) p.catch(function () {});
+    } catch (e) {}
     try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === "suspended") actx.resume(); } catch (e) {}
   }
+  function releaseAudio() { try { if (silentEl) silentEl.pause(); } catch (e) {} }
   function keepAwake() {
     try { if (navigator.wakeLock && !wakeLock) navigator.wakeLock.request("screen").then(function (w) { wakeLock = w; w.addEventListener("release", function () { wakeLock = null; }); }).catch(function () {}); } catch (e) {}
   }
   function stopRun() {
-    run = null; if (runTick) { clearInterval(runTick); runTick = null; }
+    run = null; if (runTick) { clearInterval(runTick); runTick = null; } releaseAudio();
     if (wakeLock && !timer) { try { wakeLock.release(); } catch (e) {} wakeLock = null; }
   }
   function startPhase(phase, secs) {
@@ -501,7 +525,7 @@
     if (!runTick) runTick = setInterval(runStep, 200);
     render();
   }
-  /* Spoken coach cues. iPhone plays speech even when the side switch is on silent (beeps it mutes). */
+  /* Spoken coach cues. */
   function say(text) {
     if (S.voice === false || !window.speechSynthesis) return;
     try {
@@ -524,20 +548,23 @@
     var num = document.getElementById("runNum"), arc = document.getElementById("runArc");
     if (num) num.textContent = Math.max(0, left);
     if (arc) { var c = 2 * Math.PI * 88; arc.setAttribute("stroke-dashoffset", (c * (1 - Math.max(0, left) / run.total)).toFixed(1)); }
-    if (left > 0 && run.lastBeep !== left) {
-      if (left <= 3) { run.lastBeep = left; beep(run.phase === "work" ? 700 : 520, 0.1); say(String(left)); }
-      else if (run.phase === "work" && left === 10 && run.total >= 20) { run.lastBeep = left; say("10 seconds"); }
-      else if (run.phase === "work" && run.total >= 30 && left === Math.round(run.total / 2) && left !== 10) { run.lastBeep = left; say("Halfway"); }
+    if (left > 0 && run.lastBeep !== left && left < run.total + 1) {
+      run.lastBeep = left;
+      /* Sound every second of the countdown: tick, tick... then a louder beep on 3, 2, 1. */
+      if (left <= 3) { countBeep(); say(String(left)); }
+      else if (run.phase !== "work" || left <= 5) tick();
+      if (run.phase === "work" && left === 10 && run.total >= 20) say("10 seconds");
+      else if (run.phase === "work" && run.total >= 30 && left === Math.round(run.total / 2) && left !== 10) say("Halfway");
     }
     if (left <= 0) phaseDone();
   }
   function phaseDone() {
     var d = findDrill(run.id);
-    if (run.phase !== "work") { beep(990, 0.3); say("Go!"); startPhase("work", d.secs); return; }
+    if (run.phase !== "work") { horn(); say("Go!"); startPhase("work", d.secs); return; }
     finishSet(d);
   }
   function finishSet(d) {
-    beep(440, 0.45);
+    whistle();
     var wasComplete = getDay(today()).complete;
     logSet(d);
     if (!run) return;
@@ -566,7 +593,7 @@
   var wakeLock = null;
   function stopTimer() { if (timer) { clearInterval(timer); timer = null; } if (wakeLock) { try { wakeLock.release(); } catch (e) {} wakeLock = null; } }
   function startTimer(c) {
-    stopTimer();
+    stopTimer(); unlockAudio();
     var clock = document.getElementById("clock"), btn = document.getElementById("go");
     btn.disabled = true;
     try { if (navigator.wakeLock) navigator.wakeLock.request("screen").then(function (w) { wakeLock = w; }).catch(function () {}); } catch (e) {}
