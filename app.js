@@ -162,17 +162,78 @@
       '<text x="66" y="68" font-size="34">' + reps + '</text>' +
       '<text x="66" y="92" font-size="14" fill="#9fb0d8">of ' + D.dailyGoal + '</text></svg>';
   }
-  function videoBlock(v, alt) {
-    if (!v) return "";
+  /* Videos, in order of reliability:
+     1. Coach video: recorded on this phone (or a clip file in the repo). Plays inside the app, always, even offline.
+     2. YouTube demo: on iPhone it opens the YouTube app (no sign-in check). Elsewhere it plays embedded. */
+  function videoBlock(d) {
+    var v = d.video, alt = d.altVideo, h = "";
+    h += '<div id="coachClip" data-id="' + esc(d.id) + '">' + (d.clip ? nativeVideo(d.clip, "Demo") : "") + "</div>";
+    if (!v) return h;
     var thumb = "https://i.ytimg.com/vi/" + v.id + "/hqdefault.jpg";
-    var h = '<div class="video" data-vid="' + esc(v.id) + '">' +
+    h += '<div class="video" data-vid="' + esc(v.id) + '">' +
       '<img src="' + thumb + '" alt="" loading="lazy">' +
-      '<button class="play" data-action="play" data-vid="' + esc(v.id) + '" aria-label="Play video: ' + esc(v.title) + '"><span>▶ Watch how</span></button></div>' +
-      '<div class="vidlinks"><span class="muted">' + esc(v.title) + ' · ' + esc(v.channel) + '</span></div>' +
-      '<a class="btn alt sm ytapp" href="https://www.youtube.com/watch?v=' + esc(v.id) + '" target="_blank" rel="noopener">▶ Watch in the YouTube app</a>' +
-      '<p class="small muted" style="margin:6px 0 0">If YouTube asks you to sign in, use this button instead.</p>';
-    if (alt) h += '<p class="small muted" style="margin:8px 0 0">Still stuck? <a href="#" data-action="swapvid" data-vid="' + esc(alt.id) + '">Try another video</a> (' + esc(alt.channel) + ')</p>';
+      '<button class="play" data-action="play" data-vid="' + esc(v.id) + '" aria-label="Play video: ' + esc(v.title) + '"><span>▶ Watch how' + (isIOS() ? " (YouTube app)" : "") + "</span></button></div>" +
+      '<div class="vidlinks"><span class="muted">' + esc(v.title) + " · " + esc(v.channel) + "</span></div>";
+    if (isIOS()) h += '<p class="small muted" style="margin:6px 0 0">Opens in the YouTube app. Swipe back here when it ends. <a href="#" data-action="embed" data-vid="' + esc(v.id) + '">Try playing here instead</a></p>';
+    if (alt) h += '<p class="small muted" style="margin:8px 0 0">Still stuck? <a href="#" data-action="swapvid" data-vid="' + esc(alt.id) + '">Watch another video</a> (' + esc(alt.channel) + ")</p>";
     return h;
+  }
+  function nativeVideo(src, label) {
+    return '<div class="clipcard"><div class="row between"><b>🎥 ' + esc(label) + '</b></div>' +
+      '<video class="clip" src="' + esc(src) + '" controls playsinline preload="metadata"></video></div>';
+  }
+
+  /* ---------- coach videos (stored on this phone in IndexedDB) ---------- */
+  var dbP = null;
+  function db() {
+    if (dbP) return dbP;
+    dbP = new Promise(function (res, rej) {
+      if (!window.indexedDB) return rej(new Error("no idb"));
+      var r = indexedDB.open("questToMLS-clips", 1);
+      r.onupgradeneeded = function () { r.result.createObjectStore("clips"); };
+      r.onsuccess = function () { res(r.result); }; r.onerror = function () { rej(r.error); };
+    });
+    return dbP;
+  }
+  function clipOp(mode, fn) {
+    return db().then(function (d) { return new Promise(function (res, rej) {
+      var tx = d.transaction("clips", mode), st = tx.objectStore("clips"), req = fn(st);
+      tx.oncomplete = function () { res(req && req.result); }; tx.onerror = function () { rej(tx.error); };
+    }); });
+  }
+  var clipURL = null;
+  function showCoachClip(id) {
+    var box = document.getElementById("coachClip"); if (!box || box.dataset.id !== id) return;
+    var d = findDrill(id);
+    clipOp("readonly", function (st) { return st.get(id); }).then(function (blob) {
+      if (!document.getElementById("coachClip")) return;
+      if (clipURL) { URL.revokeObjectURL(clipURL); clipURL = null; }
+      var h = "";
+      if (blob) {
+        clipURL = URL.createObjectURL(blob);
+        h = nativeVideo(clipURL, "Coach video") .replace("</b></div>", '</b><span class="row"><a href="#" data-action="recClip" data-id="' + esc(id) + '">Re-record</a><a href="#" data-action="delClip" data-id="' + esc(id) + '">Delete</a></span></div>');
+      } else if (!d.clip) {
+        h = '<button class="reccard" data-action="recClip" data-id="' + esc(id) + '"><b>🎥 Add a coach video</b><span>Record 10–20 seconds of this drill. It plays right here, every time, no YouTube needed.</span></button>';
+      } else { h = box.innerHTML; }
+      box.innerHTML = h;
+    }).catch(function () {});
+  }
+  function pickClip(id) {
+    var inp = document.createElement("input");
+    inp.type = "file"; inp.accept = "video/*"; inp.setAttribute("capture", "environment");
+    inp.onchange = function () {
+      var f = inp.files && inp.files[0]; if (!f) return;
+      if (f.size > 200 * 1024 * 1024) { toast("That clip is over 200 MB. Record a shorter one."); return; }
+      toast("Saving video…");
+      clipOp("readwrite", function (st) { return st.put(f, id); })
+        .then(function () { toast("Coach video saved"); showCoachClip(id); })
+        .catch(function () { toast("Couldn't save the video. Phone storage may be full."); });
+    };
+    inp.click();
+  }
+  function delClip(id) {
+    if (!confirm("Delete the coach video for this drill?")) return;
+    clipOp("readwrite", function (st) { return st.delete(id); }).then(function () { showCoachClip(id); });
   }
 
   /* ---------- views ---------- */
@@ -241,7 +302,7 @@
     h += '<div class="row between"><h1>' + esc(d.name) + '</h1></div>';
     h += '<p class="muted" style="margin:6px 0 0">' + d.reps + ' reps · ' + tot + ' sets of ' + d.setSize + ' · ' + d.secs + ' sec each' + (d.foot === "right" ? ' · <span class="tag right">Right foot</span>' : d.foot === "left" ? ' · <span class="tag">Left foot</span>' : "") + '</p>';
     if (run && run.id === d.id && done < tot) return h + runnerPanel(d, done, tot);
-    h += videoBlock(d.video, d.altVideo);
+    h += videoBlock(d);
     h += '<div class="card" style="margin-top:14px"><h3>How</h3><p style="margin:6px 0 0">' + esc(d.how) + '</p>' +
       '<h3 style="margin-top:12px">Coach says</h3><ul class="cues">' + d.cues.map(function (c) { return "<li>" + esc(c) + "</li>"; }).join("") + "</ul>" +
       (d.builds ? '<div class="builds">⚡ ' + esc(d.builds) + "</div>" : "") + "</div>";
@@ -330,6 +391,8 @@
       (S.lastBackup ? " Last backup: " + S.lastBackup + "." : " <b>No backup yet.</b>") + '</p>' +
       '<div class="row"><button class="btn sm" data-action="export">Download backup</button><button class="btn sm alt" data-action="import">Restore</button></div>' +
       '<input type="file" id="file" accept="application/json,.json" hidden></div>';
+    h += '<h2>Sound</h2><div class="card row between"><span><b>Voice coach</b><br><span class="small muted">Says "Get ready", "Go!", "10 seconds", "3, 2, 1" and "Rest" during the timer.</span></span>' +
+      '<button class="btn sm ' + (S.voice === false ? "alt" : "") + '" data-action="voice">' + (S.voice === false ? "Off" : "On") + "</button></div>";
     h += '<div class="field"><label for="pname">Player name</label><input id="pname" value="' + esc(S.player) + '" maxlength="20"></div>';
     h += '<p class="small muted">Drills follow the U.S. Soccer Foundation Phase (U11–U12) technical focus: ball mastery, passing on the ground with pace, receiving away from pressure, turning (Cruyff, cuts) and the driven pass.</p>';
     return h;
@@ -355,6 +418,7 @@
     else if (view.tab === "me") h = viewMe();
     else h = viewHome();
     app.innerHTML = h;
+    if (view.drill && document.getElementById("coachClip")) showCoachClip(view.drill);
     document.querySelectorAll(".tab").forEach(function (b) { b.classList.toggle("is-on", b.dataset.tab === view.tab); });
   }
   function go(tab) { stopRun(); stopTimer(); view = { tab: tab, drill: null, challenge: null }; render(); window.scrollTo(0, 0); }
@@ -374,10 +438,14 @@
     else if (a === "runStart") runStart(findDrill(id));
     else if (a === "runPause") runPause();
     else if (a === "runDone") { if (run) finishSet(findDrill(run.id)); }
-    else if (a === "runSkip") { if (run) { beep(990, 0.3); startPhase("work", findDrill(run.id).secs); } }
-    else if (a === "runStop") { stopRun(); render(); }
+    else if (a === "runSkip") { if (run) { beep(990, 0.3); say("Go!"); startPhase("work", findDrill(run.id).secs); } }
+    else if (a === "runStop") { stopRun(); try { speechSynthesis.cancel(); } catch (e) {} render(); }
+    else if (a === "voice") { S.voice = S.voice === false; save(); toast(S.voice ? "Voice coach on" : "Voice coach off"); if (S.voice) say("Voice coach on."); render(); }
     else if (a === "undo") undoSet(findDrill(id));
-    else if (a === "play" || a === "swapvid") playVideo(el.dataset.vid);
+    else if (a === "play" || a === "swapvid") { if (isIOS()) openYouTubeApp(el.dataset.vid); else playVideo(el.dataset.vid); }
+    else if (a === "embed") playVideo(el.dataset.vid);
+    else if (a === "recClip") pickClip(id);
+    else if (a === "delClip") delClip(id);
     else if (a === "hidetip") { S.seenInstallTip = true; save(); render(); }
     else if (a === "challenge") { view.drill = null; view.challenge = id; view.tab = "records"; render(); window.scrollTo(0, 0); }
     else if (a === "startTimer") startTimer(D.challenges.filter(function (c) { return c.id === id; })[0]);
@@ -395,6 +463,18 @@
     if (e.target.id === "pin") document.getElementById("pinerr").textContent = "";
   });
 
+  /* Hand off to the YouTube app: no sign-in/bot check there. Falls back to the web page if the app isn't installed. */
+  function openYouTubeApp(id) {
+    var web = "https://www.youtube.com/watch?v=" + encodeURIComponent(id);
+    var left = false;
+    function hid() { if (document.hidden) left = true; }
+    document.addEventListener("visibilitychange", hid);
+    window.location.href = "youtube://www.youtube.com/watch?v=" + encodeURIComponent(id);
+    setTimeout(function () {
+      document.removeEventListener("visibilitychange", hid);
+      if (!left && !document.hidden) window.open(web, "_blank");
+    }, 1600);
+  }
   function playVideo(id) {
     var box = app.querySelector(".video"); if (!box) return;
     /* youtube.com (not youtube-nocookie) so YouTube can see the viewer's normal session and skip its "not a bot" check */
@@ -421,10 +501,21 @@
     if (!runTick) runTick = setInterval(runStep, 200);
     render();
   }
+  /* Spoken coach cues. iPhone plays speech even when the side switch is on silent (beeps it mutes). */
+  function say(text) {
+    if (S.voice === false || !window.speechSynthesis) return;
+    try {
+      window.speechSynthesis.cancel();
+      var u = new SpeechSynthesisUtterance(text); u.lang = "en-US"; u.rate = 1.05; u.pitch = 1.05;
+      window.speechSynthesis.speak(u);
+    } catch (e) {}
+  }
   function runStart(d) {
     unlockAudio(); stopRun(); keepAwake();
     run = { id: d.id };
-    startPhase("pre", 3); beep(520, 0.12); run.lastBeep = 3;
+    var done = setsDone(getDay(today()), d);
+    say("Get ready. " + setLabel(d, done) + ". " + d.setSize + " reps.");
+    startPhase("pre", 5);
     window.scrollTo(0, 0);
   }
   function runStep() {
@@ -433,19 +524,30 @@
     var num = document.getElementById("runNum"), arc = document.getElementById("runArc");
     if (num) num.textContent = Math.max(0, left);
     if (arc) { var c = 2 * Math.PI * 88; arc.setAttribute("stroke-dashoffset", (c * (1 - Math.max(0, left) / run.total)).toFixed(1)); }
-    if (left > 0 && left <= 3 && run.lastBeep !== left) { run.lastBeep = left; beep(run.phase === "work" ? 700 : 520, 0.1); }
+    if (left > 0 && run.lastBeep !== left) {
+      if (left <= 3) { run.lastBeep = left; beep(run.phase === "work" ? 700 : 520, 0.1); say(String(left)); }
+      else if (run.phase === "work" && left === 10 && run.total >= 20) { run.lastBeep = left; say("10 seconds"); }
+      else if (run.phase === "work" && run.total >= 30 && left === Math.round(run.total / 2) && left !== 10) { run.lastBeep = left; say("Halfway"); }
+    }
     if (left <= 0) phaseDone();
   }
   function phaseDone() {
     var d = findDrill(run.id);
-    if (run.phase !== "work") { beep(990, 0.3); startPhase("work", d.secs); return; }
+    if (run.phase !== "work") { beep(990, 0.3); say("Go!"); startPhase("work", d.secs); return; }
     finishSet(d);
   }
   function finishSet(d) {
     beep(440, 0.45);
+    var wasComplete = getDay(today()).complete;
     logSet(d);
     if (!run) return;
-    if (drillComplete(getDay(today()), d)) { stopRun(); render(); return; }
+    var day = getDay(today());
+    if (!wasComplete && day.complete) say("Quest complete! 500 reps. Great work.");
+    if (drillComplete(day, d)) {
+      if (wasComplete || !day.complete) say("Drill complete. Nice work.");
+      stopRun(); render(); return;
+    }
+    say("Stop. Rest. Next, " + setLabel(d, setsDone(day, d)) + ".");
     startPhase("rest", D.restSecs);
   }
   function runPause() {
