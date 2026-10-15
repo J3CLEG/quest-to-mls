@@ -100,8 +100,8 @@
     if (!wasComplete && day.reps >= D.dailyGoal) {
       day.complete = true; day.xp += 100; S.xp += 100;
       msg = "QUEST COMPLETE! +100 bonus XP";
-      beep(880, 0.15); setTimeout(function () { beep(1320, 0.25); }, 160);
-    } else { beep(660, 0.08); }
+      setTimeout(function () { playSnd("horn"); }, run ? 700 : 0);
+    } else if (!run) { playSnd("set"); }
     var newLevel = levelIndex(S.xp);
     if (newLevel > oldLevel) msg = "LEVEL UP: " + D.levels[newLevel].name + "!";
     checkBadges();
@@ -153,10 +153,26 @@
       o.start(t); o.stop(t + dur + 0.02);
     } catch (e) {}
   }
-  function tick() { beep(1500, 0.04, 0.18, "square"); }
-  function countBeep() { beep(880, 0.16, 0.4, "square"); }
-  function horn() { beep(1320, 0.5, 0.45, "sawtooth"); setTimeout(function () { beep(990, 0.35, 0.35, "sawtooth"); }, 90); }
-  function whistle() { beep(2100, 0.25, 0.35, "triangle"); setTimeout(function () { beep(2100, 0.45, 0.35, "triangle"); }, 280); }
+  /* Timer sounds are real audio files played through <audio>. iPhone treats these as media, so they are
+     reliable and play with the side switch on silent. Web Audio tones are only a fallback. */
+  var SND = {}, sndUnlocked = false;
+  ["tick", "count", "horn", "whistle", "set"].forEach(function (n) {
+    try { var a = new Audio("sounds/" + n + ".wav"); a.preload = "auto"; a.setAttribute("playsinline", ""); SND[n] = a; } catch (e) {}
+  });
+  var FALLBACK = { tick: [1500, 0.05, 0.2], count: [880, 0.18, 0.45], horn: [1320, 0.5, 0.5], whistle: [2100, 0.6, 0.4], set: [660, 0.12, 0.4] };
+  function playSnd(n) {
+    var a = SND[n], fb = FALLBACK[n];
+    if (!a) { if (fb) beep(fb[0], fb[1], fb[2]); return; }
+    try {
+      a.muted = false; a.volume = 1; a.currentTime = 0;
+      var p = a.play();
+      if (p && p.catch) p.catch(function () { if (fb) beep(fb[0], fb[1], fb[2]); });
+    } catch (e) { if (fb) beep(fb[0], fb[1], fb[2]); }
+  }
+  function tick() { playSnd("tick"); }
+  function countBeep() { playSnd("count"); }
+  function horn() { playSnd("horn"); }
+  function whistle() { playSnd("whistle"); }
   function isIOS() { return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1); }
   function isStandalone() { return window.navigator.standalone === true || window.matchMedia("(display-mode: standalone)").matches; }
 
@@ -319,7 +335,7 @@
     h += "</div>";
     if (done < tot) {
       h += '<button class="btn" data-action="runStart" data-id="' + d.id + '">▶ Start ' + esc(setLabel(d, done)) + ' · ' + d.secs + ' sec timer</button>';
-      h += '<p style="text-align:center;margin:12px 0 0"><a href="#" data-action="set" data-id="' + d.id + '">Log set without the timer (+' + d.setSize + ")</a></p>";
+      h += '<p style="text-align:center;margin:12px 0 0"><a href="#" data-action="testSound">🔊 Test sound</a> · <a href="#" data-action="set" data-id="' + d.id + '">Log set without the timer (+' + d.setSize + ")</a></p>";
     } else {
       h += '<button class="btn blue" data-action="home">Drill complete! Next drill ›</button>';
     }
@@ -397,9 +413,10 @@
       (S.lastBackup ? " Last backup: " + S.lastBackup + "." : " <b>No backup yet.</b>") + '</p>' +
       '<div class="row"><button class="btn sm" data-action="export">Download backup</button><button class="btn sm alt" data-action="import">Restore</button></div>' +
       '<input type="file" id="file" accept="application/json,.json" hidden></div>';
-    h += '<h2>Sound</h2><div class="card row between"><span><b>Voice coach</b><br><span class="small muted">Says "Get ready", "Go!", "10 seconds", "3, 2, 1" and "Rest" during the timer.</span></span>' +
+    h += '<h2>Sound</h2><button class="btn alt" data-action="testSound" style="margin-bottom:10px">🔊 Test sound</button><div class="card row between"><span><b>Voice coach</b><br><span class="small muted">Says "Get ready", "Go!", "10 seconds", "3, 2, 1" and "Rest" during the timer.</span></span>' +
       '<button class="btn sm ' + (S.voice === false ? "alt" : "") + '" data-action="voice">' + (S.voice === false ? "Off" : "On") + "</button></div>";
     h += '<div class="field"><label for="pname">Player name</label><input id="pname" value="' + esc(S.player) + '" maxlength="20"></div>';
+    h += '<p class="small muted">App version ' + APP_VERSION + '</p>';
     h += '<p class="small muted">Drills follow the U.S. Soccer Foundation Phase (U11–U12) technical focus: ball mastery, passing on the ground with pace, receiving away from pressure, turning (Cruyff, cuts) and the driven pass.</p>';
     return h;
   }
@@ -434,6 +451,7 @@
   });
 
   app.addEventListener("click", function (e) {
+    unlockAudio();
     var el = e.target.closest("[data-action]"); if (!el) return;
     var a = el.dataset.action, id = el.dataset.id;
     if (el.tagName === "A") e.preventDefault();
@@ -446,6 +464,7 @@
     else if (a === "runDone") { if (run) finishSet(findDrill(run.id)); }
     else if (a === "runSkip") { if (run) { horn(); say("Go!"); startPhase("work", findDrill(run.id).secs); } }
     else if (a === "runStop") { stopRun(); try { speechSynthesis.cancel(); } catch (e) {} render(); }
+    else if (a === "testSound") testSound();
     else if (a === "voice") { S.voice = S.voice === false; save(); toast(S.voice ? "Voice coach on" : "Voice coach off"); if (S.voice) say("Voice coach on."); render(); }
     else if (a === "undo") undoSet(findDrill(id));
     else if (a === "play" || a === "swapvid") { if (isIOS()) openYouTubeApp(el.dataset.vid); else playVideo(el.dataset.vid); }
@@ -490,6 +509,15 @@
     var link = app.querySelector(".ytapp"); if (link) link.href = "https://www.youtube.com/watch?v=" + encodeURIComponent(id);
   }
 
+  var APP_VERSION = "8";
+  function testSound() {
+    unlockAudio();
+    countBeep(); setTimeout(countBeep, 500); setTimeout(horn, 1000);
+    say("Sound check. Ready to train.");
+    var sp = !!window.speechSynthesis, ok = Object.keys(SND).length;
+    toast("Sound check · v" + APP_VERSION + " · beeps " + (ok ? "ready" : "missing") + " · voice " + (sp ? "ready" : "not supported"));
+  }
+
   /* ---------- follow-along set timer ---------- */
   var run = null, runTick = null;
   /* iPhone mutes web sounds when the side switch is on silent. Two fixes, both run on the tap that starts the timer:
@@ -506,11 +534,28 @@
   }
   function unlockAudio() {
     try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch (e) {}
+    /* iPhone only lets a sound play later if it was started once during a tap: prime every sound now, muted. */
+    if (!sndUnlocked) {
+      sndUnlocked = true;
+      Object.keys(SND).forEach(function (n) {
+        var a = SND[n];
+        try {
+          a.muted = true;
+          var p = a.play();
+          var done = function () { try { a.pause(); a.currentTime = 0; } catch (e) {} a.muted = false; };
+          if (p && p.then) p.then(done, function () { a.muted = false; sndUnlocked = false; }); else done();
+        } catch (e) { a.muted = false; }
+      });
+    }
     try {
       if (!silentEl) { silentEl = new Audio(silentWav()); silentEl.setAttribute("playsinline", ""); silentEl.loop = true; silentEl.volume = 0.01; }
       var p = silentEl.play(); if (p && p.catch) p.catch(function () {});
     } catch (e) {}
-    try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === "suspended") actx.resume(); } catch (e) {}
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      if (actx.state === "suspended") actx.resume();
+      var buf = actx.createBuffer(1, 1, 22050), src = actx.createBufferSource(); src.buffer = buf; src.connect(actx.destination); src.start(0);
+    } catch (e) {}
   }
   function releaseAudio() { try { if (silentEl) silentEl.pause(); } catch (e) {} }
   function keepAwake() {
